@@ -62,9 +62,16 @@ export interface SLAConfig {
 export interface EndpointDescriptor {
   method: string
   path: string
-  /** Whether this endpoint is retained only for backwards compatibility. */
+  /**
+   * Whether this endpoint is retained only for backwards compatibility.
+   * The SDK logs a `[RouteDock] WARNING:` line before paying a deprecated
+   * endpoint.
+   */
   deprecated?: boolean
-  /** ISO 8601 timestamp after which callers should stop using this endpoint. */
+  /**
+   * ISO 8601 timestamp after which callers should stop using this endpoint.
+   * The SDK refuses to pay (`RouteDockManifestSunsetError`) once it has passed.
+   */
   sunset_at?: string
   headers?: Record<string, string>
   request_schema?: unknown
@@ -364,6 +371,12 @@ export interface SessionHandle {
    * HTTP, upgrades the connection to WebSocket, and yields each server frame
    * (JSON frames parsed, raw strings yielded as-is). The stream ends when the
    * server closes the socket with a normal close code.
+   *
+   * Once close() has been called (manually or by the maxDurationMs lifetime
+   * guard), the next next() on an mpp-session iterator rejects with a
+   * RouteDockChannelStateError whose message is "session closed" instead of
+   * signing another voucher. Pipelined streams (concurrency > 1) stop refilling
+   * their in-flight window the same way.
    * UNAUDITED: uses stellar-experimental/one-way-channel contract.
    */
   stream(options?: StreamOptions): AsyncIterable<unknown>
@@ -402,6 +415,8 @@ export interface SessionState {
   channel_id: string
   payee: string
   payer: string
+  channel_contract: string
+  network: 'testnet' | 'mainnet'
   /** Monotonically increasing cumulative amount — stored as string to preserve precision */
   cumulative_amount: string
   last_signature: string
@@ -432,3 +447,4 @@ export {
 
 /** Dispute status of a channel */
 export type DisputeStatus = 'open' | 'in-refund-window' | 'refundable' | 'settled'
+

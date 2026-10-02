@@ -59,6 +59,47 @@ function assertManifestActive(manifest: RouteDockManifest, baseUrl: string): voi
 }
 
 /**
+ * Enforce the per-endpoint `deprecated` and `sunset_at` metadata for the URL
+ * being paid. `pay()` never learns the HTTP method, so a path shared by more
+ * than one descriptor (e.g. GET and POST on `/infer`) is refused only when
+ * every matching descriptor has sunset. Paths the manifest does not list keep
+ * today's behavior. Query strings and hashes are ignored because only
+ * `URL.pathname` is compared.
+ */
+export function assertEndpointActive(
+  manifest: RouteDockManifest,
+  url: string,
+  logger?: RouteDockLogger,
+): void {
+  const pathname = new URL(url).pathname
+  const matches = Object.entries(manifest.endpoints).filter(
+    ([, descriptor]) => descriptor.path === pathname,
+  )
+  if (matches.length === 0) return
+
+  const now = Date.now()
+  const allSunset = matches.every(([, descriptor]) => {
+    const sunsetAt = descriptor.sunset_at
+    return typeof sunsetAt === 'string' && Date.parse(sunsetAt) <= now
+  })
+  if (allSunset) {
+    const [key, descriptor] = matches[0]!
+    throw new RouteDockManifestSunsetError(
+      `Endpoint '${key}' (${pathname}) sunset at ${descriptor.sunset_at} and can no longer be used`,
+    )
+  }
+
+  const deprecated = matches.find(([, descriptor]) => descriptor.deprecated === true)
+  if (deprecated && logger) {
+    const [key, descriptor] = deprecated
+    const sunsetSuffix = descriptor.sunset_at ? `; sunset_at ${descriptor.sunset_at}` : ''
+    logger(
+      `[RouteDock] WARNING: ${manifest.name} → ${pathname}; endpoint '${key}' is deprecated${sunsetSuffix}`,
+    )
+  }
+}
+
+/**
  * Validate semantic constraints for manifest fields beyond JSON schema syntax.
  * Enforces that all keys in `latency_hints` must be a subset of declared `regions`.
  */
@@ -165,14 +206,21 @@ export function invalidateManifest(baseUrl: string): void {
 
 /**
  * Per-entry freshness from response headers, per RFC 9111:
- * `Cache-Control: max-age` wins over `Expires`, and both win over the
- * default TTL. Missing or unparseable directives fall back to the default
- * TTL (60s). `max-age=0` yields an immediately-stale entry, disabling
+ * `Cache-Control: no-store` and `no-cache` disable caching outright and take
+ * precedence over everything else — the client has no revalidation path, so
+ * `no-cache` (which permits reuse only after revalidation) is treated the
+ * same as `no-store`. Otherwise, `max-age` wins over `Expires`, and both win
+ * over the default TTL. Missing or unparseable directives fall back to the
+ * default TTL (60s). `max-age=0` yields an immediately-stale entry, disabling
  * caching for that response.
  */
 function ttlFromHeaders(headers: Headers, now: number): number {
   const cacheControl = headers.get('cache-control')
   if (cacheControl) {
+    const directives = cacheControl.split(',').map((directive) => directive.trim().toLowerCase())
+    if (directives.includes('no-store') || directives.includes('no-cache')) {
+      return 0
+    }
     const maxAge = /max-age=(\d+)/i.exec(cacheControl)
     if (maxAge) {
       return Number.parseInt(maxAge[1]!, 10) * 1000
@@ -452,3 +500,4 @@ export function rankProvidersByLatency(
     return 0
   })
 }
+

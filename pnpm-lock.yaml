@@ -187,9 +187,15 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
     devDependencies:
+      '@cfworker/json-schema':
+        specifier: ^4.0.0
+        version: 4.1.1
       '@opennextjs/cloudflare':
         specifier: ^1.20.2
         version: 1.20.2(next@16.2.2(@babel/core@7.29.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(wrangler@4.118.0)
+      '@routedock/routedock':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@types/node':
         specifier: ^20
         version: 20.19.39
