@@ -216,7 +216,7 @@ export default async function LandingPage() {
                 icon: <GitBranch className="h-5 w-5" />,
                 title: 'Provider adds middleware + serves routedock.json',
                 detail:
-                  'One Express middleware call. The SDK validates the manifest at startup. Providers declare their modes, pricing, and payee address once.',
+                  'One middleware call. Adapters sign and serve the manifest, and clients validate before paying. Providers declare their modes, pricing, and payee address once.',
               },
               {
                 step: '02',

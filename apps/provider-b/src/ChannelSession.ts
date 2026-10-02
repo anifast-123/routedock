@@ -20,6 +20,7 @@ import {
 } from './manifest.js'
 import type { Env } from './env.js'
 import { createSessionWriters } from './sessionWrites.js'
+import { resolveAssetContract } from './config.js'
 
 interface OrderBookLevel {
   price: string
@@ -66,7 +67,7 @@ export class ChannelSession extends DurableObject<Env> {
   private buildApp(): Hono {
     const env = this.env
     const network: Network = env.STELLAR_NETWORK === 'mainnet' ? 'mainnet' : 'testnet'
-    const assetContract = env.USDC_ASSET_CONTRACT ?? ''
+    const assetContract = resolveAssetContract(env, network)
     const channelContract = env.CHANNEL_CONTRACT_ID ?? ''
 
     // mpp-session cannot verify a voucher without the commitment key, so fail
@@ -252,7 +253,14 @@ export class ChannelSession extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
-    this.app ??= this.buildApp()
+    if (!this.app) {
+      try {
+        this.app = this.buildApp()
+      } catch (err) {
+        console.error('[startup]', err)
+        return Response.json({ error: 'Provider misconfigured' }, { status: 500 })
+      }
+    }
     return this.app.fetch(request)
   }
 }
