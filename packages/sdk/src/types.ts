@@ -8,6 +8,18 @@ import type { Store } from 'mppx'
 
 export type PaymentMode = 'x402' | 'mpp-charge' | 'mpp-session' | 'mpp-session-ws'
 
+/** Payment asset configuration with optional mode/endpoint scoping */
+export interface AssetConfig {
+  /** Asset ticker symbol, e.g. "USDC" or "XLM" */
+  asset: string
+  /** Stellar Asset Contract (SAC) address for this payment asset */
+  asset_contract: string
+  /** Optional: restrict this asset to specific payment modes. If omitted, available for all modes. */
+  modes?: PaymentMode[]
+  /** Optional: restrict this asset to specific endpoints (by name). If omitted, available for all endpoints. */
+  endpoints?: string[]
+}
+
 /**
  * Agent custody mode — declared in routedock.json when provider accepts ZK vault payers.
  * `nulth` = Nulth proof-authorized account (the ZK-account primitive; formerly "covenant-zk").
@@ -62,9 +74,16 @@ export interface SLAConfig {
 export interface EndpointDescriptor {
   method: string
   path: string
-  /** Whether this endpoint is retained only for backwards compatibility. */
+  /**
+   * Whether this endpoint is retained only for backwards compatibility.
+   * The SDK logs a `[RouteDock] WARNING:` line before paying a deprecated
+   * endpoint.
+   */
   deprecated?: boolean
-  /** ISO 8601 timestamp after which callers should stop using this endpoint. */
+  /**
+   * ISO 8601 timestamp after which callers should stop using this endpoint.
+   * The SDK refuses to pay (`RouteDockManifestSunsetError`) once it has passed.
+   */
   sunset_at?: string
   headers?: Record<string, string>
   request_schema?: unknown
@@ -103,6 +122,12 @@ export interface RouteDockManifest {
   asset: string
   /** Stellar Asset Contract (SAC) address for the payment asset */
   asset_contract: string
+  /**
+   * Payment assets accepted by this provider. Each asset can be scoped to specific
+   * modes and endpoints. When present, assets[0] must match the root-level
+   * asset and asset_contract.
+   */
+  assets?: AssetConfig[]
   /**
    * Stellar address (G...) that receives payments. Used as the default
    * recipient for all modes. Individual per-request modes (x402, mpp-charge)
@@ -364,6 +389,12 @@ export interface SessionHandle {
    * HTTP, upgrades the connection to WebSocket, and yields each server frame
    * (JSON frames parsed, raw strings yielded as-is). The stream ends when the
    * server closes the socket with a normal close code.
+   *
+   * Once close() has been called (manually or by the maxDurationMs lifetime
+   * guard), the next next() on an mpp-session iterator rejects with a
+   * RouteDockChannelStateError whose message is "session closed" instead of
+   * signing another voucher. Pipelined streams (concurrency > 1) stop refilling
+   * their in-flight window the same way.
    * UNAUDITED: uses stellar-experimental/one-way-channel contract.
    */
   stream(options?: StreamOptions): AsyncIterable<unknown>
@@ -402,6 +433,8 @@ export interface SessionState {
   channel_id: string
   payee: string
   payer: string
+  channel_contract: string
+  network: 'testnet' | 'mainnet'
   /** Monotonically increasing cumulative amount — stored as string to preserve precision */
   cumulative_amount: string
   last_signature: string
@@ -432,3 +465,4 @@ export {
 
 /** Dispute status of a channel */
 export type DisputeStatus = 'open' | 'in-refund-window' | 'refundable' | 'settled'
+

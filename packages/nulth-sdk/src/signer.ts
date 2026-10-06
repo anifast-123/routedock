@@ -1,5 +1,6 @@
 import type { SignAuthEntry } from '@stellar/stellar-sdk/contract'
 import {
+  assertAuthEntryMatchesContext,
   authDigestFromEntry,
   commitAllowlist,
   commitDailyCap,
@@ -13,7 +14,7 @@ import {
 import { NulthClient } from './NulthClient.js'
 import type { NulthClientConfig, PaymentAuthContext } from './types.js'
 
-/** Compatible with @x402/stellar ClientStellarSigner */
+/** Nulth ZK signer. Not compatible with the x402 exact scheme, see #356. */
 export interface NulthStellarSigner {
   address: string
   signAuthEntry: SignAuthEntry
@@ -25,8 +26,9 @@ export interface NulthSignerConfig extends NulthClientConfig {
 }
 
 /**
- * Create an x402-compatible signer that pays from a Nulth ZK account.
- * Proofs are built off-chain; allowlist and cap never leave the agent.
+ * Create a Nulth signer. RouteDockClient.pay() rejects Nulth vaults until a
+ * Nulth scheme client and account contract exist.
+ * See https://github.com/winsznx/routedock/issues/356
  */
 export function createNulthSigner(config: NulthSignerConfig): NulthStellarSigner {
   const client = new NulthClient(config)
@@ -41,6 +43,8 @@ export function createNulthSigner(config: NulthSignerConfig): NulthStellarSigner
           'Nulth paymentContext must be set before signing — call setNulthPaymentContext()',
         )
       }
+
+      assertAuthEntryMatchesContext(authEntry, nulthAccount, ctx)
 
       const proof = client.buildPaymentAuthProof({
         authEntry,
